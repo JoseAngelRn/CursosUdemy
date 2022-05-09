@@ -1,0 +1,28 @@
+Los pasos para solucionarlo son:
+
+- Acceder al servidor master de openshift
+
+- Añadir lo siguiente  /etc/origin/node/pods/apiserver.yaml
+
+============================================
+
+- mountPath: /etc/pki
+
+      name: certs
+
+
+- hostPath:
+
+      path: /etc/pki
+
+    name: certs
+
+==============================================
+
+- Ejecutar lo siguiente
+
+oc patch dc docker-registry -p '{"spec":{"template":{"spec":{"containers":[{"name":"registry","volumeMounts":[{"mountPath":"/etc/pki","name":"certs"}]}],"volumes":[{"hostPath":{"path":"/etc/pki","type":"Directory"},"name":"certs"}]}}}}'
+
+- y lo siguiente
+
+oc adm policy add-scc-to-user hostaccess -z registry
