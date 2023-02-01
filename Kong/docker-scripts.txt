@@ -1,0 +1,5 @@
+Execute : docker stop kong
+Execute : docker rm kong
+Execute : 
+
+docker run -d --name kong --network=kong-net --restart always -e "KONG_DATABASE=postgres" -e "KONG_PG_HOST=kong-database" -e "KONG_PG_USER=kong" -e "KONG_PG_PASSWORD=password" -e "KONG_PROXY_ACCESS_LOG=/dev/stdout" -e "KONG_ADMIN_ACCESS_LOG=/dev/stdout" -e "KONG_PROXY_ERROR_LOG=/dev/stderr" -e "KONG_ADMIN_ERROR_LOG=/dev/stderr" -e "KONG_ADMIN_LISTEN=0.0.0.0:8001, 0.0.0.0:8444 ssl" -p 80:8000 -p 443:8443 -p 8001:8001 -p 8444:8444 --ip 172.1.1.40 kong:2.1.4-alpine

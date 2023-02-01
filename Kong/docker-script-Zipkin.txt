@@ -1,0 +1,12 @@
+To run zipkin:
+
+docker run -d --name zipkin --restart unless-stopped --network kong-net -p 9411:9411 openzipkin/zipkin:2
+
+----------------------------------------------------------
+
+To stop and remove zipkin, and remove the image from your drive, execute these in sequence:
+
+docker stop zipkin
+docker rm zipkin
+docker images
+docker image rm [openzipkin image id]
