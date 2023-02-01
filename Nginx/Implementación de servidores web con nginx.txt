@@ -1,0 +1,414 @@
+---------------MAQUINA BASE--------------
+
+***INSTALAR PAQUETES NECESARIOS***
+sudo dnf install wget tar policycoreutils-python-utils
+
+***INSTALAR NGINX***
+sudo dnf install nginx
+sudo systemctl start nginx
+sudo systemctl status nginx
+sudo systemctl enable nginx (Para asegurar la persisencia [Es decir si se reinicia arranca automáticamente])
+sudo firewall-cmd --permanent --add-service=http --zone=public (Habilitar protocolo http)
+sudo firewall-cmd --reload
+sudo firewall-cmd --list-all (Listar las reglas)
+YA PODRÍAMOS ACCEDER AL SERVIDOR NGINX A TRAVES DEL NAVEGADOR CON NUESTRA IP
+
+***Directorio por defecto de NGINX***
+/usr/share/nginx/html/
+
+***INSTALAR BBDD MARIA DB***
+sudo dnf install mariadb-server
+sudo systemctl start mariadb
+sudo systemctl status mariadb
+sudo systemctl enable mariadb (Asegurar que hay persistencia)
+mysql_secure_installation (Ejecutar el script de seguridad)
+ - Crearemos un password nuevo y lo demás todo Y
+
+***INSTALAR SOPORTE PARA PHP***
+sudo dnf install php php-mysqlnd
+
+***COMPROBAR QUE PHP FUNCIONA***
+sudo nano /usr/share/nginx/html/test.php (Crear una páguna para ver que el módulo php se carga correctamente)
+
+<?php
+phpinfo();
+?>
+
+sudo systemctl restart nginx
+sudo systemctl status nginx
+Acceder desde el navegador
+ip/test.php (O el nombre que hayamos puesto)
+
+----------------MAQUINA BLOQUES-----------------------------------------
+
+***CONFIGURACIÓN DE BLOQUES***
+sudo mkdir /usr/share/nginx/html/www
+sudo mkdir /usr/share/nginx/html/ventas
+ls -lZ /usr/share/nginx/html/ (Comprobar que son httpd_sys_content las dos carpetas anteriores)
+Agregamos algo de contenido a los directorios
+sudo nano /usr/share/nginx/html/www/index.html
+
+Bienvenido a www.empresa.com
+
+sudo nano /usr/share/nginx/html/ventas/index.html
+
+Bienvenido a ventas.empresa.com
+
+Cada bloque es recomendable que almacene un dominio y tenga su archivo de configuración independiente en este caso tendremos 2 ventas y www
+
+sudo nano /etc/nginx/conf.d/www.conf (Archivo de configuración del bloque www)
+
+server{
+        listen 80 default_server; #(El default_server es por si acceden por ip que muestre la pagina de este bloque solo puede estar en un archivo así hay que quitarlo de la configuración por defecto /etc/nginx/nginx.conf)
+        listen [::]:80;
+
+        root /usr/share/nginx/html/www; #directorio donde se encuentras los archivos
+        index index.html index.htm; #Nombres del index
+
+        server_name     empresa.com     www.empresa.com; #Nombre al que responde el bloque
+	access_log/var/log/nginx/www.access.log; #Donde se almacenan los log de accesos
+	error_log /var/log/nginx/www.error.log; #Donde se almacenan los log de error
+        location / {
+                try_files $uri $uri/ =404;
+        }
+}
+
+sudo cp /etc/nginx/conf.d/www.conf /etc/nginx/conf.d/ventas.conf
+sudo nano /etc/nginx/conf.d/ventas.conf
+
+server{
+        listen 80;
+        listen [::]:80;
+
+        root /usr/share/nginx/html/ventas; #directorio donde se encuentras los archivos
+        index index.html index.htm; #Nombres del index
+
+        server_name     ventas.empresa.com; #Nombre al que responde el bloque
+	access_log /var/log/nginx/ventas.access.log; #Donde se almacenan los log de accesos
+	error_log /var/log/nginx/ventas.error.log; #Donde se almacenan los log de error
+        location / {
+                try_files $uri $uri/ =404;
+        }
+}
+
+Comprobamos que la configuración es correcta
+sudo nginx -t
+sudo systemctl restart nginx
+
+PRUEBA DE FUNCIONAMIENTO
+Desde una máquina en la que tengamos un servidor DNS (En mi caso lo haré desde mi propio windows)
+C:\Windows\System32\drivers\etc
+/etc/hosts
+Agremos las siguiente lineas
+
+192.168.19.147	www.empresa.com	empresa.com
+192.168.19.147	ventas.empresa.com
+
+Con esto ya podríamos acceder por nuestro navegador
+
+***CERTIFICADOS SSL***
+Lo primero es crear el directorio donde vamos a almacenar los certificador
+sudo mkdir -p /etc/nginx/cert
+vamos a generar un certifidado 509 ssl autofirmado 
+sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/nginx/cert/www.empresa.com.key -out /etc/nginx/cert/www.empresa.com.crt
+Nos pedirá que rellenmos una serie de parametros
+-pais: es
+-provincia: sevilla
+-ciudad: sevilla
+-nombre organización: empresa.com
+-subunidad: 
+-nombre del dominio al que responde el certificado: www.empresa.com
+-email: jose@empresa.com
+LISTO
+comprobamos que se ha creado
+ll /etc/nginx/cert/
+
+CONFIGURAR EL BLOQUE
+sudo nano /etc/nginx/conf.d/www.conf
+El archivo debe de quedar así
+
+server{
+        listen 80;
+        listen [::]:80;
+
+        root /usr/share/nginx/html/www;
+        index index.html index.htm;
+
+        server_name     empresa.com     www.empresa.com;
+        location / {
+                try_files $uri $uri/ =404;
+        }
+}
+server{
+        listen 443 ssl;
+
+        root /usr/share/nginx/html/www;
+        index index.html index.htm;
+
+        server_name     www.empresa.com; #Solo escribimos el dominio del certificado
+        location / {
+                try_files $uri $uri/ =404;
+        }
+        ssl_certificate /etc/nginx/cert/www.empresa.com.crt; #Ruta del certificado
+        ssl_certificate_key /etc/nginx/cert/www.empresa.com.key; #ruta de la key del certificado
+        ssl_protocols TLSv1 TLSv1.1 TLSv1.2; #Protocolos de seguridad (Estos son los recomendables)
+        ssl_ciphers HIGH:!aNULL:!MD5;
+}
+
+A continuación damos de alta el puerto 443
+sudo firewall-cmd --permanent --add-service=https
+sudo firewall-cmd --reload
+sudo firewall-cmd --list-all (Aqui aparecerá el servicio https)
+sudo systemctl restart nginx
+Ahora ya podremos acceder por el navegador y veremos el certificado
+https://www.empresa.com/
+
+REPETIR PROCESO PARA EL DOMINIO ventas.empresa.com (cambiando www por ventas)
+
+---------------------------MAQUINA SRV1 (WordPress)-----------------------------------------
+
+Instalación de WordPress con nginx
+Instalamos el siguiente paquete php
+sudo dnf install php-json
+sudo systemctl restart nginx
+
+***CREACION DE LA BBDD***
+Accedemos a la BBDD
+mysql -u root -p
+create database wordpress; (Creamos la BBDD)
+create user 'wp_jose'@'localhost' identified by 'jose123'; (creamos un usuario con contraseña)
+grant all on wordpress.* to 'wp_jose'@'localhost'; (Le damos al usuario todos los privilegios para la BBDD creada)
+flush privileges; (Recargamos los privilegios)
+exit
+
+***DESCARGA DE WORDPRESS***
+wget https://wordpress.org/latest.tar.gz
+Descomprimimos
+sudo tar -xvf latest.tar.gz -C /usr/share/nginx/html
+Comprobamos que sea ha creado el directorio worpress
+ll /usr/share/nginx/html/
+Cambiamos el propietario del directorio
+sudo chown -R nginx:nginx /usr/share/nginx/html/wordpress
+Comprobamos que es correcto
+ll /usr/share/nginx/html/
+
+***CONFIGURAR EL SERVICIO PHP-FPM
+Es el servicio mediante el cual se va a ejecutar php directamente
+Debemos modificarlo porque el asistente de instalación de wordpress por defecto usa el usuario apache y va a dar error porque el nuestro en nginx 
+sudo nano /etc/php-fpm.d/www.conf
+Modificamos estos dos parametros que antes se llamaba apache
+
+user = nginx
+group = nginx
+
+Reiniciamos el servicio
+sudo systemctl restart php-fpm
+
+***CONFIGURAR SELINUX***
+Para que cuando se ejecute el script de instalación de wordpress se permita a nuestra BBDD escribir debemos poner nuestro SElinux en modo permisivo 
+sudo setenforce 0
+Comprobamos
+getenforce
+Una vez se instale wordpress lo desactivaremos
+
+***INSTALACIÓN DE WORDPRES***
+Para ellos nos vamos a nuestro navegador y escribimos
+IP/wordpress
+se nos abrirá el instalador de wordpress
+Seleccionamos el idioma y rellenamos los campos de la BBDD como los tenemos creados de antes
+-Nombre de BBDD: wordpress
+-Nombre usuario: wp_jose
+-Contraseña: jose123
+-Servidor de BBDD: localhost
+-Prefijo tabla: wp_
+Tras esto comprobamos que se nos ha creado el archivo wp-config.php
+ll /usr/share/nginx/html/wordpress/
+
+Rellenamos la ultima información
+-Título del sitio: Wordpress de Prueba
+-Nombre de usuario: admon
+-Contraseña: Jose123#@#
+-Tu correo electrónico: admon@curso.com.es
+YA ESTARÍA INSTALADO WORDPRESS
+
+***CONFIGURAR SELINUX***
+Ahora volveremos a cambiar SElinux para que deje de estar modo permisivo
+sudo setenforce 1
+Comprobamos
+getenforce
+En este archivo se donde se guarda las normas que han sido violadas miestras SElinux estaba modo permisivo
+sudo cat /var/log/audit/audit.log
+podemos filtrar
+sudo grep AVC /var/log/audit/audit.log
+
+Para que nuestro wordpres pueda conectarse a internet para descar pluggid y actualizaciones debemos de habilitar un carácter booleano de SElinux
+sudo setsebool -P httpd_can_network_connect on
+
+---------------------------MAQUINA SRV1 (Joomla)-----------------------------------------
+***INSTALACIÓN DE LOS REQUISITOS DE PHP***
+
+sudo dnf install php-xml php-zip
+sudo systemctl restart php-fpm
+
+***CREACIÓN DE LA BBDD DE JOOMLA***
+mysql -u root -p
+create database joomla;
+create user 'jml_admon'@'localhost' identified by 'jose123';
+grant all on joomla.* to 'jml_admon'@'localhost';
+flush privileges;
+exit
+
+***OBTENER JOOMLA***
+wget https://downloads.joomla.org/cms/joomla3/3-9-19/joomla_3-9-19-Stable-Full_Package.tar.gz
+sudo mkdir /usr/share/nginx/html/joomla
+sudo tar -xvf joomla_3-9-19-Stable-Full_Package.tar.gz -C /usr/share/nginx/html/joomla/
+sudo chown -R nginx:nginx /usr/share/nginx/html/joomla/
+
+***AJUSTANDO SELINUX***
+sudo setenforce 0
+getenforce
+
+***INSTALACIÓN DE JOOMLA***
+desde el navegador web
+IP/joomla
+veremos que nos da un error
+Archivo de errores joomla
+sudo cat /var/log/nginx/error.log
+veremos que tiene permiso el grupo apache
+ls -l /var/lib/php
+Para solucionar este error agregaremos el usuarionginx al grupo apache (Otra opción sería cambiar el grupo de la carpeta pero sería algo temporal)
+sudo usermod -G apache nginx
+sudo systemctl restart nginx
+sudo systemctl restart php-fpm
+Ahora si accedemos desde el navegador ya podremos instalar joomla
+IP/joomla
+Rellenamos los datos:
+-Nombre del sitio: joomla de prueba
+-Nombre de usuario: admon
+-Contraseña: Jose123#@#
+-Tu correo electrónico: admon@curso.com.es
+-Sitio fuera de linea: No
+Configuramos la BBDD
+-Tipo de BBDD: MySQLi
+-Hospedaje: localhost
+-Usuario: jml_admon
+-Contraseña: jose123
+-BBDD: joomla
+En la siguiente pestaña, visión general 
+-Instalar contenido de ejemplo: NO
+-Enviar correo electronicocon la configuración: NO
+Pinchamos en instalar
+Eliminamos la carpeta de instalación  y ya podríamos acceder a joomla
+
+***AJUSTANDO SELINUX***
+sudo setenforce 1
+getenforce
+
+***Añadir a un usuario al grupo de root***
+Desde el usuario root
+usermod -aG wheel jose (El usuario que queramos que pueda utilizar permisos de sudo)
+
+***Cambiar el hostname***
+Desde nuestro usuario
+sudo hostnamectl set-hostname Centos8Nodo1 (El nombre que queramos para nuestro hastname)
+
+***Cambiar dirección IP***
+sudo nmtui
+
+***Archivos importantes de Nginx***
+/etc/nginx/nginx.conf (Archivo de configuración de nginx)
+/etc/nginx/conf.d/ (Aquí van los archivos para los bloques)
+/usr/share/nginx/html/ (Aquí van las páginas web)
+/var/log/ngingx/access.log (Registra accesos)
+/var/log/ngingx/error.log (Registra errores)
+
+***Actualizar el certificado de registro*** (Si hemos clonado una áquina es importante hacerlo)
+sudo yum install subscription-manager
+sudo subscription-manager refresh
+
+----------------------BALANCEO DE CARGA-------------------------------------
+Para ello necesitamos tres nodos (3 maquinas virtuales) en mi caso nodo1, nodo2 y proxy (Importante que no tengan el mismo hostname)
+-->NODO1
+sudo dnf install php
+sudo systemctl start php-fpm
+sudo systemctl enable php-fpm
+sudo systemctl status php-fpm
+sudo systemctl restart nginx
+Crearemos una página para ver el balanceo
+cd /usr/share/nginx/html
+sudo nano app.php
+<?php
+echo "Esta petición esta siendo atendida desde el servidor:".gethostname();
+?>
+
+-->NODO2
+sudo dnf install php
+sudo systemctl start php-fpm
+sudo systemctl enable php-fpm
+sudo systemctl status php-fpm
+sudo systemctl restart nginx
+Crearemos la misma página el balanceo
+cd /usr/share/nginx/html
+sudo nano app.php
+<?php
+echo "Esta petición esta siendo atendida desde el servidor:".gethostname();
+?>
+
+-->PROXY
+cd /etc/nginx/
+sudo cp nginx.conf nginx.conf.original (Hacemos una copia por seguridad)
+sudo nano nginx.conf
+Borramos los comentarios
+Dentro de la etiqueta http  agregamos nuestros nodo1 y nodo2
+http {
+    upstream servidores {
+        server 192.168.19.146;
+        server 192.168.19.148;
+    }
+Y dentro de la etiqueta server nos vamos a location e incluimos el proxy_pass
+       location / {
+               proxy_pass http://servidores;
+}
+
+sudo systemctl restart nginx
+sudo setsebool httpd_can_network_connect 1
+Si desde un navegador accedemos a la página web del proxy veremos que que si recargamos la página hará balanceo de carga
+
+----------------------------NGINX COMO PROXY INVERSO---------------------------------------------
+-->NODO1
+sudo nano /etc/nginx/nginx.conf
+Nos vamos a la parte de server y borramos desde server incluyendo el mismo hasta el final del documento
+sudo nano /etc/nginx/conf.d/www.conf
+Cambiamos:
+server_name por nuestra IP
+server_name 192.168.19.146 
+cabiamos el loction y lo dejamos vacio
+location /(
+
+)
+
+sudo systemctl restart nginx
+Nos vamos a un navegador y ponemos la IP
+Veremos que accedemos
+
+-->PROXY
+sudo nano /etc/nginx/nginx.conf
+Nos vamos a la parte de server y borramos desde server incluyendo el mismo hasta el final del documento
+sudo nano /etc/nginx/conf.d/www.conf
+
+server {
+	listen80;
+	server_name www.emresa.com;
+
+	location / {
+		proxy_pass http://192.168.19.146; #IP del nodo1
+}
+}
+
+sudo systemctl restart nginx
+suso setsebol -P httpd_can_network_connect on
+
+Desde nuestro PC de windows en el archivos hosts añadimos
+IP PROXY www.empresa.com empresa.com
+
+
