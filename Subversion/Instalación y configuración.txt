@@ -1,0 +1,62 @@
+Antes de enpezar tener el S.O actualizado
+sudo apt-get update
+sudo apt-get upgrade
+
+***Requisitos previos***
+
+Necesitamos tener Apache instalado en nuestro sistema ya que usaremos http para acceder a todos los repositorios SVN.
+sudo apt-get install apache2
+sudo apt-get install apache2-utils
+
+Instalamos SVN en Ubuntu.
+sudo apt-get install subversion
+sudo apt-get install libapache2-mod-svn
+sudo apt-get install libsvn-dev
+
+Habilitamos los módulos apache requeridos, “dav”, “dav_svn”,
+sudo a2enmod dav
+sudo a2enmod dav_svn
+
+Reiciamos el servicio de apache
+sudo systemctl restart apache2
+
+***Configuración***
+
+Crearemos un directorio donde almacenaremos todos los repositorios de SVN. Usaremos ‘/var/www/svn’ como nuestro directorio principal de SVN.
+sudo mkdir /var/www/svn
+
+Ahora asignamos los permisos apropiados a la carpeta
+sudo chmod -R 755 /var/www/svn
+sudo chown -R www-data:www-data /var/www/svn
+
+Creamos nuestro primer repositorio dentro del directorio de inicio de SVN
+sudo svnadmin create /var/www/svn/test-repo
+
+Nuestro directorio ya está listo, solo necesitamos configurar el servidor apache.
+sudo nano /etc/apache2/mods-enabled/dav_svn.conf
+
+Moficar lo siguiente
+Alias /svn /var/www/svn
+<Location /svn>
+AuthType Basic
+AuthName “Subversion Repository”
+AuthUserFile /etc/apache2/svn.passwd
+Require valid-user
+<Location>
+
+Crear usuarios que tengan permiso para acceder al repositorio de SVN.
+sudo htpasswd -cm /etc/apache2/svn.passwd jose
+sudo htpasswd -cm /etc/apache2/svn.passwd pepe
+
+Reiniciar el servicio de apache
+sudo systemctl restart apache2
+
+***Prueba***
+
+http://ip/svn/
+introducir usuario y password
+http://192.168.19.139/svn/
+pepe
+pepe123
+
+https://laboratoriolinux.es/index.php/-noticias-mundo-linux-/software/22142-sencilla-guia-para-instalar-svn-en-ubuntu.html
